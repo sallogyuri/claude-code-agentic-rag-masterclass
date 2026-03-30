@@ -1,0 +1,6 @@
+1. Copy .env.example → .env in both backend/ and frontend/ and fill in your keys
+  2. Run the SQL migration in the Supabase SQL editor
+  3. Create your OpenAI Assistant (see Task 4 in the plan) and add the ID to backend/.env
+  4. Start backend: cd backend && venv/Scripts/activate && uvicorn main:app --reload
+  5. Start frontend: cd frontend && npm run dev
+  6. Run the Task 11 smoke test checklist

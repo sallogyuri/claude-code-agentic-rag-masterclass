@@ -1,4 +1,9 @@
 {
+    "statusLine": {
+      "type": "command",
+      "command": "bash /d/aiautomators/claude-code-agentic-rag-masterclass/.claude/statusline-command.sh"
+    },
+    "enabledMcpjsonServers": ["playwright", "sequential-thinking"],
     "permissions": {
       "allow": [
         "WebFetch(domain:*)",

@@ -1,0 +1,1226 @@
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"/><title>Ismeretlen </title></head><body>
+<h1 id="1-app-shell-observability">1. App Shell + Observability</h1>
+<p>complexity: ğŸ”´ <strong>Complex</strong> â€” Multiple systems (Supabase, OpenAI Responses API, LangSmith, React, FastAPI) must be stood up and wired together. The SSE streaming path and Auth flow add integration complexity. Break into sequential tasks but execute as a single agent pass.</p>
+<hr />
+<h2 id="what-were-building">What We're Building</h2>
+<p>A working chat application with:
+- Supabase email/password auth (JWT flows into the backend via RLS)
+- A React + Tailwind + shadcn/ui frontend with a chat UI
+- A Python FastAPI backend that proxies OpenAI Responses API calls
+- OpenAI Responses API managing threads, memory, and file_search (black-box RAG)
+- SSE streaming of chat responses from backend to frontend
+- LangSmith tracing of every LLM call</p>
+<hr />
+<h2 id="environment-variables">Environment Variables</h2>
+<h3 id="backend-backendenv">Backend (<code>backend/.env</code>)</h3>
+<p>```</p>
+<h1 id="supabase">Supabase</h1>
+<p>SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+SUPABASE_JWT_SECRET=<jwt-secret></p>
+<h1 id="openai">OpenAI</h1>
+<p>OPENAI_API_KEY=<openai-api-key>
+OPENAI_ASSISTANT_ID=<assistant-id>   # populated after Task 4</p>
+<h1 id="langsmith">LangSmith</h1>
+<p>LANGSMITH_API_KEY=<langsmith-api-key>
+LANGSMITH_PROJECT=rag-masterclass-module1
+LANGSMITH_TRACING_V2=true</p>
+<h1 id="app">App</h1>
+<p>ALLOWED_ORIGINS=http://localhost:5173
+```</p>
+<h3 id="frontend-frontendenv">Frontend (<code>frontend/.env</code>)</h3>
+<p><code>VITE_SUPABASE_URL=https://&lt;project-ref&gt;.supabase.co
+VITE_SUPABASE_ANON_KEY=&lt;anon-key&gt;
+VITE_API_URL=http://localhost:8000</code></p>
+<hr />
+<h2 id="full-project-directory-structure">Full Project Directory Structure</h2>
+<p><code>claude-code-agentic-rag-masterclass/
+â”œâ”€â”€ .agent/
+â”‚   â””â”€â”€ plans/
+â”‚       â””â”€â”€ 1.app-shell-observability.md   â†� this file
+â”œâ”€â”€ .claude/
+â”‚   â”œâ”€â”€ commands/
+â”‚   â”‚   â”œâ”€â”€ build.md
+â”‚   â”‚   â””â”€â”€ onboard.md
+â”‚   â””â”€â”€ settings.json
+â”œâ”€â”€ backend/
+â”‚   â”œâ”€â”€ venv/                              â†� created by: python -m venv venv
+â”‚   â”œâ”€â”€ .env                               â†� never committed
+â”‚   â”œâ”€â”€ requirements.txt
+â”‚   â”œâ”€â”€ main.py                            â†� FastAPI app entry point
+â”‚   â”œâ”€â”€ config.py                          â†� pydantic-settings BaseSettings
+â”‚   â”œâ”€â”€ auth.py                            â†� JWT verification middleware
+â”‚   â”œâ”€â”€ routers/
+â”‚   â”‚   â””â”€â”€ chat.py                        â†� /chat/stream SSE endpoint
+â”‚   â””â”€â”€ services/
+â”‚       â”œâ”€â”€ openai_service.py              â†� Responses API wrapper
+â”‚       â””â”€â”€ langsmith_service.py           â†� LangSmith tracing helpers
+â”œâ”€â”€ frontend/
+â”‚   â”œâ”€â”€ .env                               â†� never committed
+â”‚   â”œâ”€â”€ index.html
+â”‚   â”œâ”€â”€ package.json
+â”‚   â”œâ”€â”€ tsconfig.json
+â”‚   â”œâ”€â”€ vite.config.ts
+â”‚   â”œâ”€â”€ tailwind.config.ts
+â”‚   â”œâ”€â”€ postcss.config.js
+â”‚   â”œâ”€â”€ components.json                    â†� shadcn/ui config
+â”‚   â””â”€â”€ src/
+â”‚       â”œâ”€â”€ main.tsx
+â”‚       â”œâ”€â”€ App.tsx
+â”‚       â”œâ”€â”€ lib/
+â”‚       â”‚   â”œâ”€â”€ supabase.ts                â†� createClient singleton
+â”‚       â”‚   â””â”€â”€ api.ts                     â†� fetch wrapper (attaches JWT)
+â”‚       â”œâ”€â”€ hooks/
+â”‚       â”‚   â”œâ”€â”€ useAuth.ts
+â”‚       â”‚   â””â”€â”€ useChat.ts                 â†� SSE streaming hook
+â”‚       â”œâ”€â”€ components/
+â”‚       â”‚   â”œâ”€â”€ AuthGuard.tsx
+â”‚       â”‚   â”œâ”€â”€ LoginForm.tsx
+â”‚       â”‚   â”œâ”€â”€ ChatLayout.tsx
+â”‚       â”‚   â”œâ”€â”€ ThreadList.tsx
+â”‚       â”‚   â”œâ”€â”€ MessageList.tsx
+â”‚       â”‚   â””â”€â”€ MessageInput.tsx
+â”‚       â””â”€â”€ pages/
+â”‚           â”œâ”€â”€ LoginPage.tsx
+â”‚           â””â”€â”€ ChatPage.tsx
+â”œâ”€â”€ supabase/
+â”‚   â””â”€â”€ migrations/
+â”‚       â””â”€â”€ 001_module1_schema.sql
+â”œâ”€â”€ CLAUDE.md
+â”œâ”€â”€ PRD.md
+â”œâ”€â”€ PROGRESS.md
+â””â”€â”€ README.md</code></p>
+<hr />
+<h2 id="task-breakdown">Task Breakdown</h2>
+<hr />
+<h3 id="task-1-a-supabase-project-setup">Task 1 â€” Supabase Project Setup</h3>
+<p><strong>Goal:</strong> Create the Supabase schema for Module 1 with full RLS.</p>
+<p><strong>Steps:</strong></p>
+<ol>
+<li>In the Supabase dashboard, enable the <code>pgvector</code> extension (needed in later modules but enable now): <code>create extension if not exists vector;</code></li>
+<li>Create migration file <code>supabase/migrations/001_module1_schema.sql</code> with the following:</li>
+</ol>
+<p>```sql
+-- Enable UUID generation
+create extension if not exists "pgcrypto";</p>
+<p>-- Threads table: each user owns their threads
+create table public.threads (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  title       text not null default 'New Chat',
+  -- The Responses API thread ID - used to continue conversations
+  openai_thread_id text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);</p>
+<p>alter table public.threads enable row level security;</p>
+<p>create policy "threads: users see own rows"
+  on public.threads for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);</p>
+<p>-- Messages table: human + assistant messages per thread
+create table public.messages (
+  id          uuid primary key default gen_random_uuid(),
+  thread_id   uuid not null references public.threads(id) on delete cascade,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  role        text not null check (role in ('user', 'assistant')),
+  content     text not null,
+  created_at  timestamptz not null default now()
+);</p>
+<p>alter table public.messages enable row level security;</p>
+<p>create policy "messages: users see own rows"
+  on public.messages for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);</p>
+<p>-- Auto-update threads.updated_at
+create or replace function public.set_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;</p>
+<p>create trigger threads_updated_at
+  before update on public.threads
+  for each row execute procedure public.set_updated_at();
+```</p>
+<ol>
+<li>Run the migration via the Supabase SQL editor or CLI: <code>supabase db push</code></li>
+<li>In Supabase Auth settings, enable Email provider. Disable "Confirm email" for local dev simplicity (re-enable for production).</li>
+</ol>
+<p><strong>Validation:</strong>
+- In the Supabase SQL editor, run <code>select * from public.threads;</code> â€” should return empty with no error.
+- Create a test user via <code>supabase auth admin create-user</code> or the Auth dashboard. Verify inserting a thread row using that user's JWT returns only that row when queried.
+- Attempt to insert a thread with a different <code>user_id</code> than the authenticated user â€” should be rejected by RLS.</p>
+<hr />
+<h3 id="task-2-a-backend-scaffolding">Task 2 â€” Backend Scaffolding</h3>
+<p><strong>Goal:</strong> Set up the Python FastAPI project with venv, dependencies, config, and a health check endpoint.</p>
+<p><strong>Steps:</strong></p>
+<ol>
+<li>
+<p>From the repo root, scaffold the backend:
+<code>bash
+cd backend
+python -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate</code></p>
+</li>
+<li>
+<p>Create <code>backend/requirements.txt</code>:
+<code>fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-dotenv==1.0.1
+pydantic-settings==2.2.1
+pydantic==2.7.1
+openai==1.30.1
+supabase==2.4.3
+PyJWT==2.8.0
+httpx==0.27.0
+langsmith==0.1.77
+sse-starlette==2.1.0
+python-multipart==0.0.9</code></p>
+</li>
+<li>
+<p>Install: <code>pip install -r requirements.txt</code></p>
+</li>
+<li>
+<p>Create <code>backend/config.py</code>:
+```python
+from pydantic_settings import BaseSettings, SettingsConfigDict</p>
+</li>
+</ol>
+<p>class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")</p>
+<pre><code>supabase_url: str
+supabase_service_role_key: str
+supabase_jwt_secret: str
+
+openai_api_key: str
+openai_assistant_id: str = ""
+
+langsmith_api_key: str
+langsmith_project: str = "rag-masterclass-module1"
+langsmith_tracing_v2: str = "true"
+
+allowed_origins: str = "http://localhost:5173"
+</code></pre>
+<p>settings = Settings()
+```</p>
+<ol>
+<li>Create <code>backend/main.py</code>:
+```python
+import os
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from config import settings
+from routers import chat</li>
+</ol>
+<h1 id="langsmith-env-must-be-set-before-any-openai-import">LangSmith env must be set before any openai import</h1>
+<p>os.environ["LANGCHAIN_TRACING_V2"] = settings.langsmith_tracing_v2
+os.environ["LANGCHAIN_API_KEY"] = settings.langsmith_api_key
+os.environ["LANGCHAIN_PROJECT"] = settings.langsmith_project</p>
+<p>app = FastAPI(title="RAG Masterclass API", version="1.0.0")</p>
+<p>app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins.split(","),
+    allow_credentials=True,
+    allow_methods=["<em>"],
+    allow_headers=["</em>"],
+)</p>
+<p>app.include_router(chat.router, prefix="/chat", tags=["chat"])</p>
+<p>@app.get("/health")
+def health():
+    return {"status": "ok"}
+```</p>
+<p><strong>Validation:</strong>
+- Run <code>uvicorn main:app --reload</code> from <code>backend/</code> (with venv active).
+- <code>curl http://localhost:8000/health</code> must return <code>{"status":"ok"}</code>.
+- <code>curl http://localhost:8000/docs</code> must open the OpenAPI UI in browser.</p>
+<hr />
+<h3 id="task-3-a-jwt-auth-middleware">Task 3 â€” JWT Auth Middleware</h3>
+<p><strong>Goal:</strong> Verify Supabase-issued JWTs on all protected routes; extract <code>user_id</code> and inject into request state.</p>
+<p><strong>Steps:</strong></p>
+<ol>
+<li>Create <code>backend/auth.py</code>:
+```python
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import jwt
+from config import settings</li>
+</ol>
+<p>bearer_scheme = HTTPBearer()</p>
+<p>def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+) -&gt; dict:
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(
+            token,
+            settings.supabase_jwt_secret,
+            algorithms=["HS256"],
+            options={"verify_aud": False},  # Supabase sets aud to "authenticated"
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))</p>
+<pre><code>user_id = payload.get("sub")
+if not user_id:
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
+
+return {"user_id": user_id, "email": payload.get("email")}
+</code></pre>
+<p>```</p>
+<p><strong>Validation:</strong>
+- Add a temporary test route in <code>main.py</code>:
+  <code>python
+  from auth import get_current_user
+  @app.get("/me")
+  def me(user=Depends(get_current_user)):
+      return user</code>
+- Generate a Supabase JWT for a test user (via the dashboard or <code>supabase.auth.signInWithPassword</code>).
+- <code>curl -H "Authorization: Bearer &lt;token&gt;" http://localhost:8000/me</code> must return <code>{"user_id":"...","email":"..."}</code>.
+- <code>curl http://localhost:8000/me</code> without a token must return 403.
+- Remove the temporary <code>/me</code> route after validation.</p>
+<hr />
+<h3 id="task-4-a-openai-responses-api-service">Task 4 â€” OpenAI Responses API Service</h3>
+<p><strong>Goal:</strong> Create the OpenAI Assistant (once) and a service layer that manages Responses API threads and streaming.</p>
+<p><strong>Steps:</strong></p>
+<ol>
+<li>Create the OpenAI Assistant once via API or dashboard with <code>file_search</code> tool enabled. Note the <code>assistant_id</code> and put it in <code>backend/.env</code> as <code>OPENAI_ASSISTANT_ID</code>.</li>
+</ol>
+<p>If creating via script (run once, not part of app boot):
+   <code>python
+   from openai import OpenAI
+   client = OpenAI(api_key="&lt;key&gt;")
+   assistant = client.beta.assistants.create(
+       name="RAG Masterclass Assistant",
+       instructions="You are a helpful assistant. Answer questions based on the files provided.",
+       tools=[{"type": "file_search"}],
+       model="gpt-4o",
+   )
+   print(assistant.id)  # copy this into OPENAI_ASSISTANT_ID</code></p>
+<ol>
+<li>Create <code>backend/services/openai_service.py</code>:
+```python
+from openai import OpenAI
+from config import settings
+from typing import Iterator</li>
+</ol>
+<p>client = OpenAI(api_key=settings.openai_api_key)</p>
+<p>def get_or_create_thread(openai_thread_id: str | None) -&gt; str:
+    """Return existing thread ID or create a new one."""
+    if openai_thread_id:
+        return openai_thread_id
+    thread = client.beta.threads.create()
+    return thread.id</p>
+<p>def stream_response(
+    openai_thread_id: str,
+    user_message: str,
+) -&gt; Iterator[str]:
+    """
+    Add the user message to the thread, run the assistant, and
+    yield text delta chunks as they arrive.
+    """
+    client.beta.threads.messages.create(
+        thread_id=openai_thread_id,
+        role="user",
+        content=user_message,
+    )</p>
+<pre><code>with client.beta.threads.runs.stream(
+    thread_id=openai_thread_id,
+    assistant_id=settings.openai_assistant_id,
+) as stream:
+    for text in stream.text_deltas:
+        yield text
+</code></pre>
+<p>```</p>
+<p><strong>Validation:</strong>
+- Write a quick inline test (run manually, not part of app):
+  <code>bash
+  # from backend/ with venv active:
+  python -c "from services.openai_service import get_or_create_thread, stream_response; tid = get_or_create_thread(None); print('thread:', tid); [print(c, end='', flush=True) for c in stream_response(tid, 'Say hello in 5 words')]"</code>
+- The script must print a thread ID and stream a short assistant reply.
+- Confirm in the OpenAI dashboard that a new thread exists.</p>
+<hr />
+<h3 id="task-5-a-langsmith-tracing-service">Task 5 â€” LangSmith Tracing Service</h3>
+<p><strong>Goal:</strong> Wrap OpenAI calls so every LLM interaction is traced in LangSmith.</p>
+<p><strong>Steps:</strong></p>
+<p>LangSmith's Python SDK supports automatic tracing via environment variables when <code>LANGCHAIN_TRACING_V2=true</code> is set. Because we set this in <code>main.py</code> before any other import, the OpenAI SDK calls will be traced automatically via the LangSmith auto-instrumentation patch.</p>
+<p>However, we also want explicit run metadata (thread ID, user ID) on each trace. Create <code>backend/services/langsmith_service.py</code>:</p>
+<p>```python
+from langsmith import traceable
+from openai import OpenAI
+from config import settings
+from typing import Iterator</p>
+<p>client = OpenAI(api_key=settings.openai_api_key)</p>
+<p>@traceable(name="openai_responses_stream", run_type="llm")
+def traced_stream_response(
+    openai_thread_id: str,
+    user_message: str,
+    user_id: str,
+) -&gt; Iterator[str]:
+    """
+    Traced wrapper around the Responses API streaming call.
+    LangSmith captures inputs/outputs and the run_type for the LLM span.
+    """
+    client.beta.threads.messages.create(
+        thread_id=openai_thread_id,
+        role="user",
+        content=user_message,
+    )</p>
+<pre><code>chunks = []
+with client.beta.threads.runs.stream(
+    thread_id=openai_thread_id,
+    assistant_id=settings.openai_assistant_id,
+) as stream:
+    for text in stream.text_deltas:
+        chunks.append(text)
+        yield text
+
+# LangSmith traceable captures the final output
+return "".join(chunks)
+</code></pre>
+<p>```</p>
+<p>Update <code>backend/services/openai_service.py</code> to import and re-export <code>traced_stream_response</code> as the primary entry point (remove the raw <code>stream_response</code>).</p>
+<p><strong>Validation:</strong>
+- Send a test message through the service.
+- Open the LangSmith dashboard at <code>https://smith.langchain.com</code> and navigate to the project <code>rag-masterclass-module1</code>.
+- Confirm a run named <code>openai_responses_stream</code> appears with the correct inputs and output text.</p>
+<hr />
+<h3 id="task-6-a-chat-api-router-sse-streaming">Task 6 â€” Chat API Router (SSE Streaming)</h3>
+<p><strong>Goal:</strong> Expose <code>POST /chat/stream</code> that accepts a message + optional thread context, persists state to Supabase, and streams the assistant response via SSE.</p>
+<p><strong>Steps:</strong></p>
+<ol>
+<li>Create <code>backend/routers/chat.py</code>:</li>
+</ol>
+<p>```python
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from supabase import create_client, Client
+from config import settings
+from auth import get_current_user
+from services.langsmith_service import traced_stream_response
+import json</p>
+<p>router = APIRouter()</p>
+<p>supabase: Client = create_client(
+    settings.supabase_url,
+    settings.supabase_service_role_key,  # service role to write on behalf of user
+)</p>
+<p>class ChatRequest(BaseModel):
+    message: str
+    thread_id: str | None = None   # our internal UUID (not OpenAI thread ID)</p>
+<p>def _get_or_create_thread(user_id: str, thread_id: str | None) -&gt; dict:
+    """
+    Look up or create a threads row. Returns the full thread dict
+    including the openai_thread_id.
+    """
+    if thread_id:
+        result = (
+            supabase.table("threads")
+            .select("*")
+            .eq("id", thread_id)
+            .eq("user_id", user_id)
+            .single()
+            .execute()
+        )
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        return result.data</p>
+<pre><code># Create new OpenAI thread
+from openai import OpenAI
+from config import settings as cfg
+oai = OpenAI(api_key=cfg.openai_api_key)
+oai_thread = oai.beta.threads.create()
+
+result = (
+    supabase.table("threads")
+    .insert({
+        "user_id": user_id,
+        "title": "New Chat",
+        "openai_thread_id": oai_thread.id,
+    })
+    .execute()
+)
+return result.data[0]
+</code></pre>
+<p>def _save_message(thread_id: str, user_id: str, role: str, content: str) -&gt; None:
+    supabase.table("messages").insert({
+        "thread_id": thread_id,
+        "user_id": user_id,
+        "role": role,
+        "content": content,
+    }).execute()</p>
+<p>def _sse_generator(message: str, thread: dict, user_id: str):
+    """Yields SSE-formatted text chunks, then a [DONE] sentinel."""
+    full_response = []</p>
+<pre><code># Save user message
+_save_message(thread["id"], user_id, "user", message)
+
+try:
+    for chunk in traced_stream_response(
+        openai_thread_id=thread["openai_thread_id"],
+        user_message=message,
+        user_id=user_id,
+    ):
+        full_response.append(chunk)
+        data = json.dumps({"delta": chunk, "thread_id": thread["id"]})
+        yield f"data: {data}\n\n"
+except Exception as e:
+    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    return
+
+# Save full assistant message
+_save_message(thread["id"], user_id, "assistant", "".join(full_response))
+
+# Update thread title from first message if still default
+if thread.get("title") == "New Chat":
+    title = message[:60]
+    supabase.table("threads").update({"title": title}).eq("id", thread["id"]).execute()
+
+yield f"data: {json.dumps({'done': True, 'thread_id': thread['id']})}\n\n"
+</code></pre>
+<p>@router.post("/stream")
+async def chat_stream(
+    request: ChatRequest,
+    user: dict = Depends(get_current_user),
+):
+    user_id = user["user_id"]
+    thread = _get_or_create_thread(user_id, request.thread_id)</p>
+<pre><code>return StreamingResponse(
+    _sse_generator(request.message, thread, user_id),
+    media_type="text/event-stream",
+    headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    },
+)
+</code></pre>
+<p>@router.get("/threads")
+def list_threads(user: dict = Depends(get_current_user)):
+    result = (
+        supabase.table("threads")
+        .select("id, title, created_at, updated_at")
+        .eq("user_id", user["user_id"])
+        .order("updated_at", desc=True)
+        .execute()
+    )
+    return result.data</p>
+<p>@router.get("/threads/{thread_id}/messages")
+def list_messages(thread_id: str, user: dict = Depends(get_current_user)):
+    # Verify ownership via RLS (service role bypasses, so we check explicitly)
+    thread = (
+        supabase.table("threads")
+        .select("id")
+        .eq("id", thread_id)
+        .eq("user_id", user["user_id"])
+        .single()
+        .execute()
+    )
+    if not thread.data:
+        raise HTTPException(status_code=404, detail="Thread not found")</p>
+<pre><code>result = (
+    supabase.table("messages")
+    .select("id, role, content, created_at")
+    .eq("thread_id", thread_id)
+    .order("created_at")
+    .execute()
+)
+return result.data
+</code></pre>
+<p>```</p>
+<p><strong>Validation:</strong>
+- With backend running and a valid Supabase JWT:
+  <code>bash
+  curl -N -X POST http://localhost:8000/chat/stream \
+    -H "Authorization: Bearer &lt;jwt&gt;" \
+    -H "Content-Type: application/json" \
+    -d '{"message":"Hello, who are you?"}'</code>
+- Response must arrive as a stream of <code>data: {...}\n\n</code> SSE events ending with <code>"done":true</code>.
+- Verify rows exist in <code>public.threads</code> and <code>public.messages</code> in Supabase.
+- Call <code>GET /chat/threads</code> â€” must list the created thread.
+- Call <code>GET /chat/threads/{thread_id}/messages</code> â€” must list both the user and assistant messages.</p>
+<hr />
+<h3 id="task-7-a-frontend-scaffolding">Task 7 â€” Frontend Scaffolding</h3>
+<p><strong>Goal:</strong> Create the React + Vite + TypeScript + Tailwind + shadcn/ui app.</p>
+<p><strong>Steps:</strong></p>
+<ol>
+<li>
+<p>From repo root:
+<code>bash
+npm create vite@latest frontend -- --template react-ts
+cd frontend
+npm install</code></p>
+</li>
+<li>
+<p>Install Tailwind:
+<code>bash
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p</code></p>
+</li>
+<li>
+<p>Configure <code>frontend/tailwind.config.ts</code>:
+<code>ts
+export default {
+  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  theme: { extend: {} },
+  plugins: [],
+}</code></p>
+</li>
+<li>
+<p>Add Tailwind directives to <code>src/index.css</code>:
+<code>css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;</code></p>
+</li>
+<li>
+<p>Install shadcn/ui and initialise:
+<code>bash
+npm install -D @types/node
+npx shadcn-ui@latest init</code>
+   Accept defaults: TypeScript, default style, <code>src/components/ui</code>, CSS variables enabled.</p>
+</li>
+<li>
+<p>Add required shadcn components:
+<code>bash
+npx shadcn-ui@latest add button input textarea scroll-area separator avatar</code></p>
+</li>
+<li>
+<p>Install Supabase client:
+<code>bash
+npm install @supabase/supabase-js</code></p>
+</li>
+<li>
+<p>Create <code>frontend/.env</code> with the Vite-prefixed vars listed in the env section above.</p>
+</li>
+<li>
+<p>Update <code>frontend/vite.config.ts</code> to add a proxy for the API (avoids CORS in dev):
+```ts
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import path from 'path'</p>
+</li>
+</ol>
+<p>export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: { '@': path.resolve(__dirname, './src') },
+  },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (p) =&gt; p.replace(/^\/api/, ''),
+      },
+    },
+  },
+})
+```</p>
+<p><strong>Validation:</strong>
+- <code>npm run dev</code> from <code>frontend/</code> must start on <code>http://localhost:5173</code> with no console errors.
+- The default Vite + React landing page renders.
+- <code>npx tsc --noEmit</code> must pass with 0 errors.</p>
+<hr />
+<h3 id="task-8-a-supabase-client-auth-hooks">Task 8 â€” Supabase Client + Auth Hooks</h3>
+<p><strong>Goal:</strong> Wire up the Supabase JS client, auth state, and a <code>useAuth</code> hook.</p>
+<p><strong>Steps:</strong></p>
+<ol>
+<li>Create <code>frontend/src/lib/supabase.ts</code>:
+```ts
+import { createClient } from '@supabase/supabase-js'</li>
+</ol>
+<p>const url = import.meta.env.VITE_SUPABASE_URL as string
+const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string</p>
+<p>export const supabase = createClient(url, anonKey)
+```</p>
+<ol>
+<li>Create <code>frontend/src/hooks/useAuth.ts</code>:
+```ts
+import { useEffect, useState } from 'react'
+import { Session, User } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'</li>
+</ol>
+<p>export function useAuth() {
+  const [session, setSession] = useState<Session | null>(null)
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)</p>
+<p>useEffect(() =&gt; {
+    supabase.auth.getSession().then(({ data }) =&gt; {
+      setSession(data.session)
+      setUser(data.session?.user ?? null)
+      setLoading(false)
+    })</p>
+<pre><code>const { data: listener } = supabase.auth.onAuthStateChange((_event, s) =&gt; {
+  setSession(s)
+  setUser(s?.user ?? null)
+})
+
+return () =&gt; listener.subscription.unsubscribe()
+</code></pre>
+<p>}, [])</p>
+<p>const signOut = () =&gt; supabase.auth.signOut()</p>
+<p>return { session, user, loading, signOut }
+}
+```</p>
+<ol>
+<li>Create <code>frontend/src/lib/api.ts</code>:
+```ts
+import { supabase } from './supabase'</li>
+</ol>
+<p>const BASE = import.meta.env.VITE_API_URL as string</p>
+<p>async function authHeaders(): Promise<Record<string, string>&gt; {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  return token ? { Authorization: <code>Bearer ${token}</code> } : {}
+}</p>
+<p>export async function apiFetch(path: string, init: RequestInit = {}) {
+  const headers = await authHeaders()
+  return fetch(<code>${BASE}${path}</code>, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...headers, ...init.headers },
+  })
+}
+```</p>
+<p><strong>Validation:</strong>
+- Add a temporary log in <code>App.tsx</code>: <code>const { user } = useAuth(); console.log(user)</code>.
+- Open browser devtools â€” after signing in (tested in Task 9) it must log the Supabase user object.
+- <code>npx tsc --noEmit</code> must pass.</p>
+<hr />
+<h3 id="task-9-a-auth-ui-login-signup-page">Task 9 â€” Auth UI (Login / Signup Page)</h3>
+<p><strong>Goal:</strong> Build the <code>LoginPage</code> with email/password sign-in and sign-up. Redirect to chat on success.</p>
+<p><strong>Steps:</strong></p>
+<ol>
+<li>Create <code>frontend/src/components/LoginForm.tsx</code>:
+```tsx
+import { useState, FormEvent } from 'react'
+import { supabase } from '@/lib/supabase'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'</li>
+</ol>
+<p>export function LoginForm() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [mode, setMode] = useState&lt;'signin' | 'signup'&gt;('signin')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)</p>
+<p>async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)</p>
+<pre><code>const fn = mode === 'signin'
+  ? supabase.auth.signInWithPassword({ email, password })
+  : supabase.auth.signUp({ email, password })
+
+const { error: err } = await fn
+if (err) setError(err.message)
+setLoading(false)
+</code></pre>
+<p>}</p>
+<p>return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="w-full max-w-sm space-y-6 rounded-xl border p-8 shadow-sm">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {mode === 'signin' ? 'Sign in' : 'Create account'}
+        </h1>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          /&gt;
+          <Input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          /&gt;
+          {error &amp;&amp; <p className="text-sm text-destructive">{error}</p>}
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? 'Loading...' : mode === 'signin' ? 'Sign in' : 'Sign up'}
+          </Button>
+        </form>
+        <p className="text-center text-sm text-muted-foreground">
+          {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
+          <button
+            type="button"
+            className="underline"
+            onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')}
+          &gt;
+            {mode === 'signin' ? 'Sign up' : 'Sign in'}
+          </button>
+        </p>
+      </div>
+    </div>
+  )
+}
+```</p>
+<ol>
+<li>Create <code>frontend/src/components/AuthGuard.tsx</code>:
+```tsx
+import { ReactNode } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+import { LoginForm } from './LoginForm'</li>
+</ol>
+<p>export function AuthGuard({ children }: { children: ReactNode }) {
+  const { session, loading } = useAuth()
+  if (loading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>
+  if (!session) return <LoginForm />
+  return &lt;&gt;{children}</>
+}
+```</p>
+<ol>
+<li>Update <code>frontend/src/App.tsx</code>:
+```tsx
+import { AuthGuard } from './components/AuthGuard'
+import { ChatPage } from './pages/ChatPage'</li>
+</ol>
+<p>export default function App() {
+  return (
+    <AuthGuard>
+      <ChatPage />
+    </AuthGuard>
+  )
+}
+```</p>
+<ol>
+<li>Create a stub <code>frontend/src/pages/ChatPage.tsx</code>:
+<code>tsx
+export function ChatPage() {
+  return &lt;div className="p-8"&gt;Chat coming in Task 10&lt;/div&gt;
+}</code></li>
+</ol>
+<p><strong>Validation:</strong>
+- <code>http://localhost:5173</code> must show the login form when not authenticated.
+- Sign up with a test email and password â€” must transition to "Chat coming in Task 10" stub page.
+- Refresh the page â€” must stay on the chat stub (session is persisted in localStorage).
+- Sign out (add a temp button calling <code>supabase.auth.signOut()</code>) â€” must return to login form.</p>
+<hr />
+<h3 id="task-10-a-chat-ui-with-sse-streaming">Task 10 â€” Chat UI with SSE Streaming</h3>
+<p><strong>Goal:</strong> Build the full chat interface: thread list sidebar, message list, and streaming input.</p>
+<p><strong>Steps:</strong></p>
+<ol>
+<li>Create <code>frontend/src/hooks/useChat.ts</code>:
+```ts
+import { useState, useCallback, useRef } from 'react'
+import { apiFetch } from '@/lib/api'
+import { supabase } from '@/lib/supabase'</li>
+</ol>
+<p>export interface Message {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}</p>
+<p>export interface Thread {
+  id: string
+  title: string
+  created_at: string
+  updated_at: string
+}</p>
+<p>export function useChat() {
+  const [threads, setThreads] = useState<Thread[]>([])
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [streaming, setStreaming] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)</p>
+<p>const loadThreads = useCallback(async () =&gt; {
+    const res = await apiFetch('/chat/threads')
+    if (res.ok) setThreads(await res.json())
+  }, [])</p>
+<p>const loadMessages = useCallback(async (threadId: string) =&gt; {
+    const res = await apiFetch(<code>/chat/threads/${threadId}/messages</code>)
+    if (res.ok) setMessages(await res.json())
+  }, [])</p>
+<p>const selectThread = useCallback(async (threadId: string) =&gt; {
+    setActiveThreadId(threadId)
+    await loadMessages(threadId)
+  }, [loadMessages])</p>
+<p>const sendMessage = useCallback(async (text: string) =&gt; {
+    if (!text.trim() || streaming) return</p>
+<pre><code>// Optimistically add user message
+const userMsg: Message = {
+  id: crypto.randomUUID(),
+  role: 'user',
+  content: text,
+  created_at: new Date().toISOString(),
+}
+const assistantMsg: Message = {
+  id: crypto.randomUUID(),
+  role: 'assistant',
+  content: '',
+  created_at: new Date().toISOString(),
+}
+setMessages((prev) =&gt; [...prev, userMsg, assistantMsg])
+setStreaming(true)
+
+const { data } = await supabase.auth.getSession()
+const token = data.session?.access_token
+const apiUrl = import.meta.env.VITE_API_URL as string
+
+abortRef.current = new AbortController()
+
+const res = await fetch(`${apiUrl}/chat/stream`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  },
+  body: JSON.stringify({ message: text, thread_id: activeThreadId }),
+  signal: abortRef.current.signal,
+})
+
+if (!res.body) { setStreaming(false); return }
+
+const reader = res.body.getReader()
+const decoder = new TextDecoder()
+let buffer = ''
+
+while (true) {
+  const { done, value } = await reader.read()
+  if (done) break
+  buffer += decoder.decode(value, { stream: true })
+  const lines = buffer.split('\n\n')
+  buffer = lines.pop() ?? ''
+
+  for (const line of lines) {
+    if (!line.startsWith('data: ')) continue
+    const payload = JSON.parse(line.slice(6))
+
+    if (payload.delta) {
+      setMessages((prev) =&gt;
+        prev.map((m) =&gt;
+          m.id === assistantMsg.id
+            ? { ...m, content: m.content + payload.delta }
+            : m
+        )
+      )
+    }
+
+    if (payload.done) {
+      const threadId: string = payload.thread_id
+      setActiveThreadId(threadId)
+      await loadThreads()
+    }
+
+    if (payload.error) {
+      console.error('SSE error:', payload.error)
+    }
+  }
+}
+
+setStreaming(false)
+</code></pre>
+<p>}, [activeThreadId, streaming, loadThreads])</p>
+<p>return {
+    threads,
+    activeThreadId,
+    messages,
+    streaming,
+    loadThreads,
+    selectThread,
+    sendMessage,
+  }
+}
+```</p>
+<ol>
+<li>Create <code>frontend/src/components/ThreadList.tsx</code>:
+```tsx
+import { Thread } from '@/hooks/useChat'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'</li>
+</ol>
+<p>interface Props {
+  threads: Thread[]
+  activeThreadId: string | null
+  onSelect: (id: string) =&gt; void
+  onNew: () =&gt; void
+}</p>
+<p>export function ThreadList({ threads, activeThreadId, onSelect, onNew }: Props) {
+  return (
+    <div className="flex h-full w-64 flex-col border-r">
+      <div className="p-4">
+        <Button onClick={onNew} className="w-full" variant="outline">
+          New Chat
+        </Button>
+      </div>
+      <Separator />
+      <ScrollArea className="flex-1">
+        <div className="space-y-1 p-2">
+          {threads.map((t) =&gt; (
+            <button
+              key={t.id}
+              onClick={() => onSelect(t.id)}
+              className={<code>w-full rounded-md px-3 py-2 text-left text-sm hover:bg-accent ${
+                activeThreadId === t.id ? 'bg-accent' : ''
+              }</code>}
+            &gt;
+              {t.title}
+            </button>
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
+  )
+}
+```</p>
+<ol>
+<li>Create <code>frontend/src/components/MessageList.tsx</code>:
+```tsx
+import { useEffect, useRef } from 'react'
+import { Message } from '@/hooks/useChat'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'</li>
+</ol>
+<p>interface Props {
+  messages: Message[]
+  streaming: boolean
+}</p>
+<p>export function MessageList({ messages, streaming }: Props) {
+  const bottomRef = useRef<HTMLDivElement>(null)</p>
+<p>useEffect(() =&gt; {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])</p>
+<p>if (messages.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-muted-foreground">
+        Start a conversation
+      </div>
+    )
+  }</p>
+<p>return (
+    <ScrollArea className="flex-1 p-4">
+      <div className="space-y-6">
+        {messages.map((msg) =&gt; (
+          <div key={msg.id} className={<code>flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}</code>}>
+            <Avatar className="h-8 w-8 shrink-0">
+              <AvatarFallback>{msg.role === 'user' ? 'U' : 'AI'}</AvatarFallback>
+            </Avatar>
+            <div
+              className={<code>max-w-[75%] rounded-lg px-4 py-2 text-sm ${
+                msg.role === 'user'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted'
+              }</code>}
+            >
+              {msg.content}
+              {streaming &amp;&amp; msg.role === 'assistant' &amp;&amp; msg.content === '' &amp;&amp; (
+                <span className="animate-pulse">â–‹</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div ref={bottomRef} />
+    </ScrollArea>
+  )
+}
+```</p>
+<ol>
+<li>Create <code>frontend/src/components/MessageInput.tsx</code>:
+```tsx
+import { useState, KeyboardEvent } from 'react'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'</li>
+</ol>
+<p>interface Props {
+  onSend: (text: string) =&gt; void
+  disabled: boolean
+}</p>
+<p>export function MessageInput({ onSend, disabled }: Props) {
+  const [value, setValue] = useState('')</p>
+<p>function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' &amp;&amp; !e.shiftKey) {
+      e.preventDefault()
+      submit()
+    }
+  }</p>
+<p>function submit() {
+    if (!value.trim()) return
+    onSend(value.trim())
+    setValue('')
+  }</p>
+<p>return (
+    <div className="border-t p-4">
+      <div className="flex gap-2">
+        <Textarea
+          rows={1}
+          placeholder="Message..."
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={disabled}
+          className="resize-none"
+        /&gt;
+        <Button onClick={submit} disabled={disabled || !value.trim()}>
+          Send
+        </Button>
+      </div>
+    </div>
+  )
+}
+```</p>
+<ol>
+<li>Create <code>frontend/src/components/ChatLayout.tsx</code>:
+```tsx
+import { useEffect } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+import { useChat } from '@/hooks/useChat'
+import { ThreadList } from './ThreadList'
+import { MessageList } from './MessageList'
+import { MessageInput } from './MessageInput'
+import { Button } from '@/components/ui/button'</li>
+</ol>
+<p>export function ChatLayout() {
+  const { signOut, user } = useAuth()
+  const {
+    threads,
+    activeThreadId,
+    messages,
+    streaming,
+    loadThreads,
+    selectThread,
+    sendMessage,
+  } = useChat()</p>
+<p>useEffect(() =&gt; { loadThreads() }, [loadThreads])</p>
+<p>function handleNewChat() {
+    // Clear current thread â€” next message will create one
+    window.location.reload()
+  }</p>
+<p>return (
+    <div className="flex h-screen flex-col">
+      {/<em> Top bar </em>/}
+      <header className="flex items-center justify-between border-b px-4 py-2">
+        <span className="font-semibold">RAG Masterclass</span>
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-muted-foreground">{user?.email}</span>
+          <Button variant="ghost" size="sm" onClick={signOut}>Sign out</Button>
+        </div>
+      </header></p>
+<pre><code>  {/* Body */}
+  &lt;div className="flex flex-1 overflow-hidden"&gt;
+    &lt;ThreadList
+      threads={threads}
+      activeThreadId={activeThreadId}
+      onSelect={selectThread}
+      onNew={handleNewChat}
+    /&gt;
+    &lt;div className="flex flex-1 flex-col overflow-hidden"&gt;
+      &lt;MessageList messages={messages} streaming={streaming} /&gt;
+      &lt;MessageInput onSend={sendMessage} disabled={streaming} /&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+</code></pre>
+<p>)
+}
+```</p>
+<ol>
+<li>Update <code>frontend/src/pages/ChatPage.tsx</code>:
+```tsx
+import { ChatLayout } from '@/components/ChatLayout'</li>
+</ol>
+<p>export function ChatPage() {
+  return <ChatLayout />
+}
+```</p>
+<p><strong>Validation:</strong>
+- Navigate to <code>http://localhost:5173</code> and sign in.
+- Type "What is RAG?" and press Enter.
+- The message must appear in the chat, the assistant response must stream in word by word.
+- After completion, the thread must appear in the left sidebar with a title.
+- Click "New Chat", send another message â€” a new thread must appear in the sidebar.
+- Select the first thread from the sidebar â€” its message history must reload from the database.
+- Refresh the page â€” threads list must persist, clicking a thread reloads its messages.</p>
+<hr />
+<h3 id="task-11-a-end-to-end-smoke-test">Task 11 â€” End-to-End Smoke Test</h3>
+<p><strong>Goal:</strong> Verify all layers are connected and working together.</p>
+<p><strong>Checklist:</strong></p>
+<ol>
+<li>Backend is running: <code>uvicorn main:app --reload</code> from <code>backend/</code> (venv active).</li>
+<li>Frontend is running: <code>npm run dev</code> from <code>frontend/</code>.</li>
+<li>Open <code>http://localhost:5173</code>.</li>
+<li>Sign up with a fresh email.</li>
+<li>Send the message: "Explain what RAG (Retrieval Augmented Generation) is in 2 sentences."</li>
+<li>Confirm streaming response arrives in the UI.</li>
+<li>In Supabase dashboard:</li>
+<li><code>public.threads</code> has 1 row for the user.</li>
+<li><code>public.messages</code> has 2 rows (user + assistant).</li>
+<li>In LangSmith dashboard (<code>https://smith.langchain.com</code>, project <code>rag-masterclass-module1</code>):</li>
+<li>1 run named <code>openai_responses_stream</code> with input and output captured.</li>
+<li>Sign out â†’ redirected to login form.</li>
+<li>Sign in again â†’ threads list shows previous thread.</li>
+<li>Click thread â†’ messages are restored.</li>
+</ol>
+<hr />
+<h2 id="dependency-order">Dependency Order</h2>
+<p><code>Task 1 (Supabase schema)
+  â””â”€â”€ Task 2 (Backend scaffolding)
+        â”œâ”€â”€ Task 3 (JWT auth middleware)
+        â”œâ”€â”€ Task 4 (OpenAI Responses API service)
+        â”‚     â””â”€â”€ Task 5 (LangSmith tracing)
+        â”‚           â””â”€â”€ Task 6 (Chat API router)
+        â””â”€â”€ Task 7 (Frontend scaffolding)
+              â”œâ”€â”€ Task 8 (Supabase client + auth hooks)
+              â”‚     â””â”€â”€ Task 9 (Auth UI)
+              â”‚           â””â”€â”€ Task 10 (Chat UI + SSE)
+              â”‚                 â””â”€â”€ Task 11 (End-to-end smoke test)</code></p>
+<hr />
+<h2 id="known-risks-and-mitigations">Known Risks and Mitigations</h2>
+<table>
+<thead>
+<tr>
+<th>Risk</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenAI Responses API streaming differs from Chat Completions</td>
+<td>Use <code>client.beta.threads.runs.stream()</code> which yields <code>text_deltas</code> â€” tested in Task 4 before wiring into the router</td>
+</tr>
+<tr>
+<td>LangSmith <code>@traceable</code> doesn't capture generators</td>
+<td>Collect chunks inside the function and return joined string as the trace output â€” yield happens before return</td>
+</tr>
+<tr>
+<td>Supabase JWT secret format</td>
+<td>Copy the JWT secret from Supabase project settings &gt; API &gt; JWT Secret (not the anon key)</td>
+</tr>
+<tr>
+<td>CORS in development</td>
+<td>Vite proxy forwards <code>/api/*</code> calls and the backend allows <code>http://localhost:5173</code> explicitly</td>
+</tr>
+<tr>
+<td>Thread ownership in service role context</td>
+<td>The chat router explicitly checks <code>user_id</code> equality even though service role bypasses RLS â€” defence in depth</td>
+</tr>
+<tr>
+<td>Windows <code>venv</code> activation path differs</td>
+<td>Plan notes both Unix and Windows activation commands</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="module-1-completion-checklist">Module 1 Completion Checklist</h2>
+<ul>
+<li>[ ] Supabase schema applied, RLS verified</li>
+<li>[ ] Backend health check passes</li>
+<li>[ ] JWT middleware rejects invalid tokens</li>
+<li>[ ] OpenAI Assistant created, ID in <code>.env</code></li>
+<li>[ ] LangSmith runs visible in dashboard</li>
+<li>[ ] SSE streaming endpoint returns chunked response</li>
+<li>[ ] Frontend login/signup flow works</li>
+<li>[ ] Chat UI streams responses in real time</li>
+<li>[ ] Thread history persists and reloads on refresh</li>
+<li>[ ] End-to-end smoke test passes all 11 checks</li>
+</ul>
+<hr />
+<h2 id="what-to-update-when-done">What to Update When Done</h2>
+<p>Update <code>PROGRESS.md</code> to mark Module 1 tasks complete.</p>
+</body></html>

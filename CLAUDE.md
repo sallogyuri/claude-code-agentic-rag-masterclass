@@ -36,5 +36,17 @@ RAG app with chat (default) and document ingestion interfaces. Config via env va
 3. **Validate** - Test and verify the implementation works correctly. Use browser testing where applicable via an appropriate MCP
 4. **Iterate** - Fix any issues found during validation
 
+## Starting Services
+
+Run `./start.sh` from the project root to start both servers:
+- **Backend** (FastAPI + uvicorn): http://127.0.0.1:8000
+- **Frontend** (Vite dev server): http://localhost:5173
+
+The script activates the backend `venv` automatically. Press Ctrl+C to stop all services.
+
+To start manually:
+- Backend: `cd backend && source venv/Scripts/activate && uvicorn main:app --reload --port 8000`
+- Frontend: `cd frontend && npm run dev`
+
 ## Progress
 Check PROGRESS.md for current module status. Update it as you complete tasks.
