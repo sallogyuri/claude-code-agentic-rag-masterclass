@@ -59,13 +59,15 @@ For testing the isolation of data between users:
 
 ## Validation
 
-Run the regression test suite before merging any backend changes:
+### Regression suite
+
+Run before merging any backend changes:
 
 ```bash
 cd backend && source venv/Scripts/activate && pytest tests/ -v
 ```
 
-Expected baseline: **21 passed, 0 failed**
+All external dependencies (Supabase, OpenAI, JWKS) are mocked — no live credentials required.
 
 | Test file | Coverage |
 |-----------|----------|
@@ -76,7 +78,14 @@ Expected baseline: **21 passed, 0 failed**
 | `tests/test_ingest_routes.py` | GET /ingest/documents, POST upload, DELETE 204, DELETE 404 |
 | `tests/test_llm_service.py` | Direct text stream, tool-call round-trip, no content leak during tool phase |
 
-All external dependencies (Supabase, OpenAI, JWKS) are mocked — no live credentials required to run the suite.
+### Adding tests for new features
+
+**Every new backend feature must include tests.** When implementing a new route, service, or piece of logic:
+
+1. Add tests to the relevant existing file (e.g., a new `/chat` endpoint goes in `tests/test_chat_routes.py`), or create a new `tests/test_<feature>.py` if the feature is distinct enough.
+2. Add any new external dependencies (new clients, APIs) to the module-level mocks in `tests/conftest.py` before the app is imported — follow the existing `patch(...)` pattern.
+3. Update the coverage table above with the new file/tests.
+4. Run the full suite and confirm 0 failures before committing.
 
 ## Progress
 Check PROGRESS.md for current module status. Update it as you complete tasks.
