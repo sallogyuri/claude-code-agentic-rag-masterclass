@@ -48,5 +48,35 @@ To start manually:
 - Backend: `cd backend && source venv/Scripts/activate && uvicorn main:app --reload --port 8000`
 - Frontend: `cd frontend && npm run dev`
 
+## Test Credentials
+For browser testing and validation:
+- **Email:** test@test.com
+- **Password:** testuser
+
+For testing the isolation of data between users:
+- **Email:** test2@test.com
+- **Password:** testuser2
+
+## Validation
+
+Run the regression test suite before merging any backend changes:
+
+```bash
+cd backend && source venv/Scripts/activate && pytest tests/ -v
+```
+
+Expected baseline: **21 passed, 0 failed**
+
+| Test file | Coverage |
+|-----------|----------|
+| `tests/test_chunking.py` | `chunk_text` edge cases (empty, single, multi-chunk, overlap, custom params) |
+| `tests/test_health.py` | GET /health smoke test |
+| `tests/test_auth.py` | JWT middleware: missing header (401), expired token (401), valid token (200) |
+| `tests/test_chat_routes.py` | GET /chat/threads, GET messages, unowned thread 404, POST /chat/stream SSE |
+| `tests/test_ingest_routes.py` | GET /ingest/documents, POST upload, DELETE 204, DELETE 404 |
+| `tests/test_llm_service.py` | Direct text stream, tool-call round-trip, no content leak during tool phase |
+
+All external dependencies (Supabase, OpenAI, JWKS) are mocked — no live credentials required to run the suite.
+
 ## Progress
 Check PROGRESS.md for current module status. Update it as you complete tasks.
