@@ -61,7 +61,7 @@ For testing the isolation of data between users:
 
 ### Regression suite
 
-Run before merging any backend changes:
+Run when the user ask to run regression testing:
 
 ```bash
 cd backend && source venv/Scripts/activate && pytest tests/ -v
@@ -75,8 +75,10 @@ All external dependencies (Supabase, OpenAI, JWKS) are mocked — no live creden
 | `tests/test_health.py` | GET /health smoke test |
 | `tests/test_auth.py` | JWT middleware: missing header (401), expired token (401), valid token (200) |
 | `tests/test_chat_routes.py` | GET /chat/threads, GET messages, unowned thread 404, POST /chat/stream SSE |
-| `tests/test_ingest_routes.py` | GET /ingest/documents, POST upload, DELETE 204, DELETE 404 |
+| `tests/test_ingest_routes.py` | GET /ingest/documents, POST upload, DELETE 204, DELETE 404, duplicate detection, update flow, hash storage, metadata storage |
 | `tests/test_llm_service.py` | Direct text stream, tool-call round-trip, no content leak during tool phase |
+| `tests/test_metadata_service.py` | `extract_metadata` success, partial JSON, LLM failure, invalid JSON, model_dump exclude_none |
+| `tests/test_record_manager.py` | compute_file_hash determinism/uniqueness, find_duplicate_by_hash found/not-found, find_document_by_name found/not-found |
 
 ### Adding tests for new features
 

@@ -79,7 +79,7 @@ def test_tool_call_triggers_retrieval_and_second_pass(monkeypatch):
         user_id="user-1",
     ))
 
-    retrieval_fn.assert_called_once_with("capital of France")
+    retrieval_fn.assert_called_once_with("capital of France", None)
     assert results == ["Paris is the capital of France."]
     assert mock_client.chat.completions.create.call_count == 2
 
@@ -98,7 +98,7 @@ def test_no_text_yielded_during_tool_call_phase(monkeypatch):
 
     results = list(llm_service_module.stream_chat_response(
         messages=MESSAGES,
-        retrieval_fn=lambda q: "ctx",
+        retrieval_fn=lambda q, mf=None: "ctx",
         user_id="user-1",
     ))
 

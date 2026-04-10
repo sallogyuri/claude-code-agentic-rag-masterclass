@@ -60,6 +60,17 @@ TEST_USER = {"user_id": "test-user-id", "email": "test@test.com"}
 def mock_supabase():
     """Return the shared Supabase mock so tests can configure return values."""
     _mock_supabase.reset_mock()
+    # Default: record_manager lookups (select→eq→eq→limit→execute) find nothing.
+    # This prevents the duplicate/update paths from firing in unrelated tests.
+    (
+        _mock_supabase.table.return_value
+        .select.return_value
+        .eq.return_value
+        .eq.return_value
+        .limit.return_value
+        .execute.return_value
+        .data
+    ) = []
     return _mock_supabase
 
 

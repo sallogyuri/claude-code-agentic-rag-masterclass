@@ -1,7 +1,8 @@
 {
     "statusLine": {
       "type": "command",
-      "command": "bash /d/aiautomators/claude-code-agentic-rag-masterclass/.claude/statusline-command.sh"
+      "command": "npx -y ccstatusline@latest",
+	  "padding": 0
     },
     "enabledMcpjsonServers": ["playwright", "sequential-thinking"],
     "permissions": {

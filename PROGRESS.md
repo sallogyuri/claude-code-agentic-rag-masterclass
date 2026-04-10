@@ -27,4 +27,14 @@ Track your progress through the masterclass. Update this file as you complete mo
 
 ### Module 2: Document Ingestion + Custom RAG
 
-- [ ] Not started
+- [x] Completed
+
+### Module 3: Record Manager
+
+- [x] DB migration: content_hash column + index on documents (supabase/migrations/003_module3_schema.sql)
+- [x] Record manager service: SHA-256 hashing, duplicate detection, name-based lookup (backend/services/record_manager.py)
+- [x] Upload handler: duplicate skip, update-in-place, hash stored on insert (backend/routers/ingest.py)
+- [x] Frontend: duplicate response handling, "already up to date" feedback (useIngestion.ts, FileUpload.tsx)
+- [x] Tests: 10 new tests (test_record_manager.py + extended test_ingest_routes.py), 31/31 passing
+
+**Status:** Module 3 COMPLETE.

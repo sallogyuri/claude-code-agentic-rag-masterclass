@@ -4,7 +4,8 @@ from pydantic import BaseModel
 from supabase import create_client, Client
 from config import settings
 from auth import get_current_user
-from services.langsmith_service import traced_stream_response
+from services.llm_service import stream_chat_response
+from services.embedding_service import embed_text
 import json
 
 router = APIRouter()
@@ -17,14 +18,10 @@ supabase: Client = create_client(
 
 class ChatRequest(BaseModel):
     message: str
-    thread_id: str | None = None   # our internal UUID (not OpenAI thread ID)
+    thread_id: str | None = None
 
 
 def _get_or_create_thread(user_id: str, thread_id: str | None) -> dict:
-    """
-    Look up or create a threads row. Returns the full thread dict
-    including the openai_thread_id.
-    """
     if thread_id:
         result = (
             supabase.table("threads")
@@ -38,19 +35,9 @@ def _get_or_create_thread(user_id: str, thread_id: str | None) -> dict:
             raise HTTPException(status_code=404, detail="Thread not found")
         return result.data
 
-    # Create new OpenAI thread
-    from openai import OpenAI
-    from config import settings as cfg
-    oai = OpenAI(api_key=cfg.openai_api_key)
-    oai_thread = oai.beta.threads.create()
-
     result = (
         supabase.table("threads")
-        .insert({
-            "user_id": user_id,
-            "title": "New Chat",
-            "openai_thread_id": oai_thread.id,
-        })
+        .insert({"user_id": user_id, "title": "New Chat"})
         .execute()
     )
     return result.data[0]
@@ -65,33 +52,65 @@ def _save_message(thread_id: str, user_id: str, role: str, content: str) -> None
     }).execute()
 
 
-def _sse_generator(message: str, thread: dict, user_id: str):
-    """Yields SSE-formatted text chunks, then a [DONE] sentinel."""
-    full_response = []
+def _load_history(thread_id: str) -> list[dict]:
+    result = (
+        supabase.table("messages")
+        .select("role, content")
+        .eq("thread_id", thread_id)
+        .order("created_at")
+        .execute()
+    )
+    return [{"role": row["role"], "content": row["content"]} for row in result.data]
 
-    # Save user message
+
+def _retrieve(query: str, user_id: str, metadata_filter: dict | None = None) -> str:
+    embedding = embed_text(query)
+    rpc_params = {
+        "query_embedding": embedding,
+        "match_user_id": user_id,
+        "match_count": 5,
+        "match_threshold": 0.4,
+    }
+    if metadata_filter:
+        rpc_params["match_metadata_filter"] = metadata_filter
+    result = supabase.rpc("match_chunks", rpc_params).execute()
+
+    if not result.data:
+        return "No relevant documents found."
+
+    parts = []
+    for row in result.data:
+        parts.append(
+            f"[From: {row['document_name']} (similarity: {row['similarity']:.2f})]\n{row['content']}"
+        )
+    return "\n\n---\n\n".join(parts)
+
+
+def _sse_generator(message: str, thread: dict, user_id: str):
+    # Save user message first so it's included in history
     _save_message(thread["id"], user_id, "user", message)
 
+    history = _load_history(thread["id"])
+    messages = [
+        {"role": "system", "content": settings.llm_system_prompt},
+        *history,
+    ]
+
+    retrieval_fn = lambda query, metadata_filter=None: _retrieve(query, user_id, metadata_filter)
+
+    full_response: list[str] = []
     try:
-        for chunk in traced_stream_response(
-            openai_thread_id=thread["openai_thread_id"],
-            user_message=message,
-            user_id=user_id,
-        ):
+        for chunk in stream_chat_response(messages, retrieval_fn, user_id):
             full_response.append(chunk)
-            data = json.dumps({"delta": chunk, "thread_id": thread["id"]})
-            yield f"data: {data}\n\n"
+            yield f"data: {json.dumps({'delta': chunk, 'thread_id': thread['id']})}\n\n"
     except Exception as e:
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
         return
 
-    # Save full assistant message
     _save_message(thread["id"], user_id, "assistant", "".join(full_response))
 
-    # Update thread title from first message if still default
     if thread.get("title") == "New Chat":
-        title = message[:60]
-        supabase.table("threads").update({"title": title}).eq("id", thread["id"]).execute()
+        supabase.table("threads").update({"title": message[:60]}).eq("id", thread["id"]).execute()
 
     yield f"data: {json.dumps({'done': True, 'thread_id': thread['id']})}\n\n"
 
@@ -128,7 +147,6 @@ def list_threads(user: dict = Depends(get_current_user)):
 
 @router.get("/threads/{thread_id}/messages")
 def list_messages(thread_id: str, user: dict = Depends(get_current_user)):
-    # Verify ownership via RLS (service role bypasses, so we check explicitly)
     thread = (
         supabase.table("threads")
         .select("id")
