@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     langsmith_project: str = "rag-masterclass-module2"
     langsmith_tracing_v2: str = "true"
 
-    allowed_origins: str = "http://localhost:5173"
+    allowed_origins: str = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176"
 
 
 settings = Settings()

@@ -8,12 +8,17 @@ def compute_file_hash(file_bytes: bytes) -> str:
 
 
 def find_duplicate_by_hash(supabase: Client, user_id: str, content_hash: str) -> dict | None:
-    """Return existing document row if this user already has a file with the same hash."""
+    """Return existing document row if this user already has a file with the same hash.
+
+    Only matches documents that completed successfully — error documents are excluded
+    so the user can re-upload a failed file without having to delete it first.
+    """
     result = (
         supabase.table("documents")
         .select("id, name, storage_path")
         .eq("user_id", user_id)
         .eq("content_hash", content_hash)
+        .neq("status", "error")
         .limit(1)
         .execute()
     )

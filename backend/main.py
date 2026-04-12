@@ -11,9 +11,21 @@ os.environ["LANGCHAIN_PROJECT"] = settings.langsmith_project
 
 app = FastAPI(title="RAG Masterclass API", version="2.0.0")
 
+_configured_origins = [o.strip() for o in settings.allowed_origins.split(",")]
+# Also permit any localhost port (Vite shifts ports when the default is occupied)
+import re as _re
+_localhost_origins = [
+    o for o in _configured_origins
+    if _re.match(r"https?://localhost(:\d+)?$", o)
+]
+_base_origins = [o for o in _configured_origins if o not in _localhost_origins]
+_final_origins = _base_origins + [
+    f"http://localhost:{p}" for p in range(5173, 5180)
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins.split(","),
+    allow_origins=_final_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

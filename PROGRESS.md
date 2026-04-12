@@ -38,3 +38,13 @@ Track your progress through the masterclass. Update this file as you complete mo
 - [x] Tests: 10 new tests (test_record_manager.py + extended test_ingest_routes.py), 31/31 passing
 
 **Status:** Module 3 COMPLETE.
+
+### Module 5: Multi-Format Support
+
+- [x] `docling>=2.0.0` added to requirements.txt and installed in venv
+- [x] `parsing_service.py`: `extract_text()` dispatcher — fast path for txt/md, Docling for pdf/docx/html, UTF-8 fallback for unknown extensions
+- [x] `ingest.py`: replaced `file_bytes.decode("utf-8")` with `extract_text(file_bytes, filename)`
+- [x] Frontend: file picker and instructions updated to accept .txt, .md, .pdf, .docx, .html
+- [x] Tests: 10 new tests in `test_parsing_service.py`, 47/47 passing
+
+**Status:** Module 5 COMPLETE.

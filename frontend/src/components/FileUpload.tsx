@@ -50,12 +50,13 @@ export function FileUpload({ onUpload }: FileUploadProps) {
       <input
         ref={inputRef}
         type="file"
-        accept=".txt,.md"
+        accept=".txt,.md,.pdf,.docx,.html"
         className="hidden"
         onChange={onInputChange}
       />
       <p className="text-sm text-muted-foreground mb-3">
-        Drag and drop a <code>.txt</code> or <code>.md</code> file here, or
+        Drag and drop a <code>.txt</code>, <code>.md</code>, <code>.pdf</code>,{' '}
+        <code>.docx</code>, or <code>.html</code> file here, or
       </p>
       <Button
         variant="outline"

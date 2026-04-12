@@ -6,3 +6,4 @@ def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> list[st
         chunks.append(text[start:end])
         start += chunk_size - overlap
     return chunks
+

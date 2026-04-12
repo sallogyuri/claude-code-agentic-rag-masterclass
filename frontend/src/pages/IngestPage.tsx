@@ -10,7 +10,8 @@ export function IngestPage() {
       <div>
         <h1 className="text-2xl font-semibold">Documents</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Upload <code>.txt</code> or <code>.md</code> files to add them to your knowledge base.
+          Upload <code>.txt</code>, <code>.md</code>, <code>.pdf</code>,{' '}
+          <code>.docx</code>, or <code>.html</code> files to add them to your knowledge base.
         </p>
       </div>
 

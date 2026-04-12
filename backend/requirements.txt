@@ -11,3 +11,4 @@ langsmith>=0.1.77
 sse-starlette>=2.1.0
 python-multipart>=0.0.9
 pytest>=8.0.0
+docling>=2.0.0

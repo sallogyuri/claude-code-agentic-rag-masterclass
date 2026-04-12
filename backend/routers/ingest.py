@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, BackgroundTasks
-from supabase import create_client, Client
+from supabase import create_client, Client, ClientOptions
 from config import settings
 from auth import get_current_user
 from services.chunking_service import chunk_text
 from services.embedding_service import embed_text
 from services.record_manager import compute_file_hash, find_duplicate_by_hash, find_document_by_name
 from services.metadata_service import extract_metadata
+from services.parsing_service import extract_text
 import uuid
 
 router = APIRouter()
@@ -13,16 +14,17 @@ router = APIRouter()
 supabase: Client = create_client(
     settings.supabase_url,
     settings.supabase_service_role_key,
+    options=ClientOptions(storage_client_timeout=120),
 )
 
 
-def _process_document(document_id: str, job_id: str, file_bytes: bytes, user_id: str) -> None:
+def _process_document(document_id: str, job_id: str, file_bytes: bytes, user_id: str, filename: str) -> None:
     try:
         # Mark job as processing
         supabase.table("ingestion_jobs").update({"status": "processing"}).eq("id", job_id).execute()
 
-        # Decode text (UTF-8 only — plaintext and markdown)
-        text = file_bytes.decode("utf-8")
+        # Extract text — supports .txt, .md, .pdf, .docx, .html via Docling
+        text = extract_text(file_bytes, filename)
 
         # Extract metadata BEFORE chunking — needs full document text
         metadata = extract_metadata(text)
@@ -53,6 +55,14 @@ def _process_document(document_id: str, job_id: str, file_bytes: bytes, user_id:
         supabase.table("ingestion_jobs").update({"status": "complete"}).eq("id", job_id).execute()
 
     except Exception as e:
+        import traceback, os
+        tb = traceback.format_exc()
+        debug_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_debug_error.txt")
+        try:
+            with open(debug_path, "w", encoding="utf-8") as f:
+                f.write(f"cwd={os.getcwd()}\ndoc={document_id}\nfile={filename}\n{tb}")
+        except Exception as write_err:
+            print(f"[debug write failed] {write_err}")
         supabase.table("documents").update({"status": "error"}).eq("id", document_id).execute()
         supabase.table("ingestion_jobs").update({
             "status": "error",
@@ -124,7 +134,7 @@ async def upload_document(
     job_id = job_result.data[0]["id"]
 
     # Queue background processing
-    background_tasks.add_task(_process_document, document_id, job_id, file_bytes, user_id)
+    background_tasks.add_task(_process_document, document_id, job_id, file_bytes, user_id, filename)
 
     return {"document_id": document_id, "job_id": job_id, "duplicate": False}
 
