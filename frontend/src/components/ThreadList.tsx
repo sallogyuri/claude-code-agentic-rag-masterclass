@@ -1,6 +1,5 @@
 import type { Thread } from '@/hooks/useChat'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 
 interface Props {
@@ -19,7 +18,7 @@ export function ThreadList({ threads, activeThreadId, onSelect, onNew }: Props) 
         </Button>
       </div>
       <Separator />
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-y-auto">
         <div className="space-y-1 p-2">
           {threads.map((t) => (
             <button
@@ -33,7 +32,7 @@ export function ThreadList({ threads, activeThreadId, onSelect, onNew }: Props) 
             </button>
           ))}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }

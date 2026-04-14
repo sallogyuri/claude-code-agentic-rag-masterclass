@@ -114,9 +114,6 @@ def test_chat_stream_creates_new_thread_and_streams(client, mock_supabase, mock_
     stream_chunks = [_make_text_delta("Hello"), _make_text_delta(" there"), _make_empty_chunk()]
     mock_openai.chat.completions.create.return_value = iter(stream_chunks)
 
-    # Stub out embed_text so no real OpenAI call happens
-    monkeypatch.setattr("routers.chat.embed_text", lambda text: [0.1] * 5)
-
     response = client.post("/chat/stream", json={"message": "Hi"})
     assert response.status_code == 200
     assert "text/event-stream" in response.headers["content-type"]

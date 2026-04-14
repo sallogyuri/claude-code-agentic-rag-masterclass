@@ -5,7 +5,8 @@ from supabase import create_client, Client
 from config import settings
 from auth import get_current_user
 from services.llm_service import stream_chat_response
-from services.embedding_service import embed_text
+from services.hybrid_search_service import hybrid_search
+from services.reranking_service import rerank_chunks
 import json
 
 router = APIRouter()
@@ -64,25 +65,15 @@ def _load_history(thread_id: str) -> list[dict]:
 
 
 def _retrieve(query: str, user_id: str, metadata_filter: dict | None = None) -> str:
-    embedding = embed_text(query)
-    rpc_params = {
-        "query_embedding": embedding,
-        "match_user_id": user_id,
-        "match_count": 5,
-        "match_threshold": 0.4,
-    }
-    if metadata_filter:
-        rpc_params["match_metadata_filter"] = metadata_filter
-    result = supabase.rpc("match_chunks", rpc_params).execute()
+    candidates = hybrid_search(query, user_id, supabase, candidate_count=10, metadata_filter=metadata_filter)
+    top_chunks = rerank_chunks(query, candidates, top_k=5)
 
-    if not result.data:
+    if not top_chunks:
         return "No relevant documents found."
 
     parts = []
-    for row in result.data:
-        parts.append(
-            f"[From: {row['document_name']} (similarity: {row['similarity']:.2f})]\n{row['content']}"
-        )
+    for chunk in top_chunks:
+        parts.append(f"[From: {chunk['document_name']}]\n{chunk['content']}")
     return "\n\n---\n\n".join(parts)
 
 

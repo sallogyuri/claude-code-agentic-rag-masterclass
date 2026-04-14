@@ -80,6 +80,8 @@ All external dependencies (Supabase, OpenAI, JWKS) are mocked — no live creden
 | `tests/test_metadata_service.py` | `extract_metadata` success, partial JSON, LLM failure, invalid JSON, model_dump exclude_none |
 | `tests/test_record_manager.py` | compute_file_hash determinism/uniqueness, find_duplicate_by_hash found/not-found, find_document_by_name found/not-found |
 | `tests/test_parsing_service.py` | `extract_text` fast path (txt/md), Docling routing (pdf/docx/html), fallback (unknown UTF-8/binary), temp file cleanup on success and failure |
+| `tests/test_hybrid_search_service.py` | RRF scoring, vector-only/keyword-only/both lists, deduplication, ordering, both RPCs called, candidate_count cap |
+| `tests/test_reranking_service.py` | passthrough when ≤ top_k, returns top_k, ordering by score, fallback on exception, partial scores handling |
 
 ### Adding tests for new features
 

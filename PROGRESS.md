@@ -39,6 +39,15 @@ Track your progress through the masterclass. Update this file as you complete mo
 
 **Status:** Module 3 COMPLETE.
 
+### Module 4: Metadata Extraction
+
+- [x] DB migration: metadata JSONB column + GIN index on documents, updated match_chunks() with optional metadata filter (supabase/migrations/004_module4_schema.sql)
+- [x] Metadata extraction service: LLM-powered structured metadata extraction with Pydantic (backend/services/metadata_service.py)
+- [x] Upload handler: metadata extracted and stored on ingest (backend/routers/ingest.py)
+- [x] Tests: test_metadata_service.py covering success, partial JSON, LLM failure, invalid JSON
+
+**Status:** Module 4 COMPLETE.
+
 ### Module 5: Multi-Format Support
 
 - [x] `docling>=2.0.0` added to requirements.txt and installed in venv
@@ -48,3 +57,13 @@ Track your progress through the masterclass. Update this file as you complete mo
 - [x] Tests: 10 new tests in `test_parsing_service.py`, 47/47 passing
 
 **Status:** Module 5 COMPLETE.
+
+### Module 6: Hybrid Search & Reranking
+
+- [x] DB migration: GIN FTS index on chunks.content, keyword_search_chunks() function, match_chunks() updated to return chunk_id (supabase/migrations/005_module6_schema.sql)
+- [x] Hybrid search service: _vector_search, _keyword_search, _reciprocal_rank_fusion, hybrid_search (backend/services/hybrid_search_service.py)
+- [x] Reranking service: LLM-based rerank_chunks() with Pydantic structured output and fallback (backend/services/reranking_service.py)
+- [x] Chat router: _retrieve() updated to use hybrid_search + rerank_chunks pipeline (backend/routers/chat.py)
+- [x] Tests: 12 new tests (test_hybrid_search_service.py + test_reranking_service.py), 60/60 passing
+
+**Status:** Module 6 COMPLETE.

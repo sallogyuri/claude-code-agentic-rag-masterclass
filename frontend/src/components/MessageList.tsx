@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import type { Message } from '@/hooks/useChat'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 interface Props {
@@ -9,10 +8,11 @@ interface Props {
 }
 
 export function MessageList({ messages, streaming }: Props) {
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
   }, [messages])
 
   if (messages.length === 0) {
@@ -24,7 +24,7 @@ export function MessageList({ messages, streaming }: Props) {
   }
 
   return (
-    <ScrollArea className="flex-1 p-4">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
       <div className="space-y-6">
         {messages.map((msg) => (
           <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
@@ -46,7 +46,6 @@ export function MessageList({ messages, streaming }: Props) {
           </div>
         ))}
       </div>
-      <div ref={bottomRef} />
-    </ScrollArea>
+    </div>
   )
 }
