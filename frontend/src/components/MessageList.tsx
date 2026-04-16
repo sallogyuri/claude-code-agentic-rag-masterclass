@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { Message } from '@/hooks/useChat'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { AgentEventBlock } from '@/components/AgentEventBlock'
 
 interface Props {
   messages: Message[]
@@ -38,8 +39,15 @@ export function MessageList({ messages, streaming }: Props) {
                   : 'bg-muted'
               }`}
             >
+              {msg.role === 'assistant' && msg.events && msg.events.length > 0 && (
+                <AgentEventBlock
+                  events={msg.events}
+                  subAgentContent={msg.subAgentContent}
+                  isStreaming={streaming}
+                />
+              )}
               {msg.content}
-              {streaming && msg.role === 'assistant' && msg.content === '' && (
+              {streaming && msg.role === 'assistant' && msg.content === '' && !msg.events?.length && (
                 <span className="animate-pulse">▋</span>
               )}
             </div>

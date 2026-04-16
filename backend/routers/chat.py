@@ -2,11 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from supabase import create_client, Client
-from config import settings
+from config import settings, SYSTEM_PROMPT
 from auth import get_current_user
 from services.llm_service import stream_chat_response
 from services.hybrid_search_service import hybrid_search
 from services.reranking_service import rerank_chunks
+from services.sub_agent_service import run_sub_agent_stream
+from services.text_to_sql_service import text_to_sql
+from services.web_search_service import web_search as web_search_svc
+from typing import Iterator
 import json
 
 router = APIRouter()
@@ -64,8 +68,15 @@ def _load_history(thread_id: str) -> list[dict]:
     return [{"role": row["role"], "content": row["content"]} for row in result.data]
 
 
-def _retrieve(query: str, user_id: str, metadata_filter: dict | None = None) -> str:
+def _retrieve(
+    query: str,
+    user_id: str,
+    metadata_filter: dict | None = None,
+    document_name: str | None = None,
+) -> str:
     candidates = hybrid_search(query, user_id, supabase, candidate_count=10, metadata_filter=metadata_filter)
+    if document_name:
+        candidates = [c for c in candidates if c.get("document_name") == document_name]
     top_chunks = rerank_chunks(query, candidates, top_k=5)
 
     if not top_chunks:
@@ -83,27 +94,36 @@ def _sse_generator(message: str, thread: dict, user_id: str):
 
     history = _load_history(thread["id"])
     messages = [
-        {"role": "system", "content": settings.llm_system_prompt},
+        {"role": "system", "content": SYSTEM_PROMPT},
         *history,
     ]
 
     retrieval_fn = lambda query, metadata_filter=None: _retrieve(query, user_id, metadata_filter)
 
-    full_response: list[str] = []
+    def sub_agent_fn(task: str, document_name: str) -> Iterator[dict]:
+        scoped_fn = lambda q, mf=None: _retrieve(q, user_id, mf, document_name=document_name)
+        yield from run_sub_agent_stream(task, document_name, user_id, scoped_fn)
+
+    text_to_sql_fn = lambda query: text_to_sql(query, user_id)
+    web_search_fn = lambda query: web_search_svc(query)
+
+    full_response_parts: list[str] = []
     try:
-        for chunk in stream_chat_response(messages, retrieval_fn, user_id):
-            full_response.append(chunk)
-            yield f"data: {json.dumps({'delta': chunk, 'thread_id': thread['id']})}\n\n"
+        for event in stream_chat_response(messages, retrieval_fn, sub_agent_fn, text_to_sql_fn, web_search_fn, user_id):
+            event_type = event.get("type")
+            if event_type in ("delta", "sub_agent_delta"):
+                full_response_parts.append(event["delta"])
+            yield f"data: {json.dumps({**event, 'thread_id': thread['id']})}\n\n"
     except Exception as e:
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'thread_id': thread['id']})}\n\n"
         return
 
-    _save_message(thread["id"], user_id, "assistant", "".join(full_response))
+    _save_message(thread["id"], user_id, "assistant", "".join(full_response_parts))
 
     if thread.get("title") == "New Chat":
         supabase.table("threads").update({"title": message[:60]}).eq("id", thread["id"]).execute()
 
-    yield f"data: {json.dumps({'done': True, 'thread_id': thread['id']})}\n\n"
+    yield f"data: {json.dumps({'type': 'done', 'thread_id': thread['id']})}\n\n"
 
 
 @router.post("/stream")

@@ -34,6 +34,14 @@ _mock_openai_instance = MagicMock()
 _openai_patch = patch("openai.OpenAI", return_value=_mock_openai_instance)
 _openai_patch.start()
 
+# psycopg2 — prevent any real DB connection at import/test time
+_psycopg2_patch = patch("psycopg2.connect", MagicMock())
+_psycopg2_patch.start()
+
+# Tavily — prevent real web requests at import/test time
+_tavily_patch = patch("tavily.TavilyClient", MagicMock())
+_tavily_patch.start()
+
 # ---------------------------------------------------------------------------
 # 3. Now it is safe to import the app
 # ---------------------------------------------------------------------------
@@ -102,3 +110,22 @@ def raw_client(mock_supabase):
     app.dependency_overrides.clear()
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
+
+
+@pytest.fixture
+def mock_sub_agent():
+    """Patch run_sub_agent_stream in the chat router to return an empty iterator."""
+    with patch("routers.chat.run_sub_agent_stream", return_value=iter([])) as m:
+        yield m
+
+
+@pytest.fixture
+def mock_psycopg2_connect():
+    with patch("services.text_to_sql_service.psycopg2.connect") as m:
+        yield m
+
+
+@pytest.fixture
+def mock_tavily():
+    with patch("services.web_search_service.TavilyClient") as m:
+        yield m

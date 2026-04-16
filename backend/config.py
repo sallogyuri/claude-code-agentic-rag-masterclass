@@ -13,10 +13,9 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://openrouter.ai/api/v1"
     llm_api_key: str
     llm_model: str = "openai/gpt-4o-mini"
-    llm_system_prompt: str = (
-        "You are a helpful assistant. When the user asks about documents or specific "
-        "information, use the retrieve_chunks tool to search the knowledge base before answering."
-    )
+
+    database_url: str = ""          # Supabase Postgres connection string (pooled)
+    tavily_api_key: str = ""        # Tavily web search API key
 
     langsmith_api_key: str
     langsmith_project: str = "rag-masterclass-module2"
@@ -26,3 +25,19 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+SYSTEM_PROMPT = (
+    "You are a helpful assistant with access to four tools:\n"
+    "- retrieve_chunks: search the user's uploaded documents for relevant content\n"
+    "- text_to_sql: query structured/tabular data — use for (1) questions about the "
+    "user's documents, threads, or messages (counts, status, file types, metadata) and "
+    "(2) business or analytics questions about sales data (revenue, orders, customers, "
+    "regions, salespeople, products, date ranges)\n"
+    "- web_search: search the web when the knowledge base has no relevant results\n"
+    "- spawn_sub_agent: delegate full-document analysis to an isolated sub-agent\n\n"
+    "Always try retrieve_chunks first for document content questions. "
+    "Use text_to_sql for any structured/tabular data question, including sales analytics. "
+    "Use web_search as a fallback only when retrieve_chunks finds nothing relevant or "
+    "the question clearly requires current/external information. "
+    "Cite web sources (title + URL) when using web_search results."
+)
